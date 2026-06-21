@@ -6,3 +6,4 @@ ipykernel
 langchain-groq
 langchain-openai
 langchain-tavily
+nest_asyncio

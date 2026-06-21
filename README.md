@@ -4,13 +4,14 @@
 
 ## 📋 Overview
 
-**Agentic_LangGraph** is a comprehensive educational project demonstrating the evolution from basic chatbots to sophisticated AI agents. It showcases three increasingly complex patterns:
+**Agentic_LangGraph** is a comprehensive educational project demonstrating the evolution from basic chatbots to sophisticated AI agents. It showcases four increasingly complex patterns:
 
 1. **Basic Chatbot** - Direct LLM conversation
 2. **Tool-Calling Agent** - LLM with external tools and conditional routing
 3. **ReACT Agent** - Multi-turn reasoning with loop-based tool calling
+4. **ReACT Agent with Memory** - Persistent conversation state with thread-based conversations
 
-This repository is perfect for learning how to build production-ready AI applications using modern agent architectures.
+This repository is perfect for learning how to build production-ready AI applications using modern agent architectures with memory persistence and streaming capabilities.
 
 ---
 
@@ -51,8 +52,7 @@ Agentic_langgraph/
 | **langchain-tavily** | Web search tool integration |
 | **langsmith** | Monitoring and debugging for LangChain apps |
 | **python-dotenv** | Secure environment variable management |
-| **ipykernel** | Jupyter notebook execution |
-
+| **ipykernel** | Jupyter notebook execution || **nest-asyncio** | Nested async event loops for Jupyter |
 ---
 
 ## 🚀 Getting Started
@@ -297,6 +297,106 @@ Iteration 3:
 
 ---
 
+### Pattern 4️⃣: ReACT Agent with Memory & Streaming
+
+Advanced ReACT agent with **persistent conversation memory** and **streaming capabilities**.
+
+```mermaid
+graph LR
+    A["User Input<br/>Thread ID"] --> B["Memory<br/>Checkpoint"]
+    B --> C["LLM Reasoning<br/>w/ Context"]
+    C --> D{Tool Call?}
+    D -->|Yes| E["Execute Tool"]
+    E --> F["Tool Result"]
+    F --> G["Re-Reason"]
+    G --> D
+    D -->|No| H["Final Response"]
+    H --> I["Save to<br/>Memory"]
+    I --> J["Output"]
+    
+    style A fill:#e1f5ff
+    style B fill:#c8e6c9
+    style C fill:#f8bbd0
+    style D fill:#fff9c4
+    style E fill:#ffe0b2
+    style F fill:#ffe0b2
+    style G fill:#f8bbd0
+    style H fill:#dcedc8
+    style I fill:#c8e6c9
+    style J fill:#4fc3f7
+```
+
+**Flow:**
+1. **Multi-thread Support** - Maintain separate conversation histories via `thread_id`
+2. **Memory Checkpoint** - Persistent state using `MemorySaver`
+3. **ReACT Loop** - Full reasoning with tool calling
+4. **Streaming Support** - Real-time event streaming
+5. **Context Preservation** - LLM has access to entire conversation history
+
+**Key Features:**
+- 💾 **Persistent Memory** - Conversations saved across sessions
+- 🔄 **Thread-based Conversations** - Multiple independent conversations by thread ID
+- 📡 **Multiple Streaming Modes**:
+  - `stream_mode="updates"` - Only updates for changed nodes
+  - `stream_mode="values"` - Full state at each step
+  - `astream_events()` - Async event streaming for real-time monitoring
+- 📚 **Full Context** - LLM sees all previous messages in conversation
+- 🔁 **State Accumulation** - Message history grows with each interaction
+
+**Configuration:**
+```python
+config = {"configurable": {"thread_id": "user_123"}}
+
+# Single invoke with memory
+response = graph.invoke({"messages": "Tell me a joke"}, config=config)
+
+# Streaming updates (only changed nodes)
+for chunk in graph.stream({"messages": "What is AI?"}, config=config, stream_mode="updates"):
+    print(chunk)
+
+# Streaming values (full state at each step)
+for chunk in graph.stream({"messages": "Hello"}, config=config, stream_mode="values"):
+    print(chunk)
+
+# Async event streaming with full visibility
+async for event in graph.astream_events({"messages": input}, config=config, version="v2"):
+    print(event)
+```
+
+**Use Cases:**
+- 🤖 Stateful chatbots with conversation history
+- 💬 Multi-turn conversations with context awareness
+- 📊 Real-time streaming responses to users
+- 🔍 Full visibility into agent reasoning process
+- 👥 Multi-user scenarios with separate threads
+
+**Example - Multi-turn Conversation:**
+```python
+# User 1 - Thread ID "user_1"
+config1 = {"configurable": {"thread_id": "user_1"}}
+response1 = graph.invoke({"messages": "Hi, I'm Alice"}, config=config1)
+response2 = graph.invoke({"messages": "What's my name?"}, config=config1)
+# LLM remembers: "Your name is Alice"
+
+# User 2 - Thread ID "user_2" (separate history)
+config2 = {"configurable": {"thread_id": "user_2"}}
+response3 = graph.invoke({"messages": "Hi, I'm Bob"}, config=config2)
+response4 = graph.invoke({"messages": "What's my name?"}, config=config2)
+# LLM remembers: "Your name is Bob"
+# No cross-contamination between threads!
+```
+
+**Memory Implementation:**
+```python
+from langgraph.checkpoint.memory import MemorySaver
+
+memory = MemorySaver()
+graph = builder.compile(checkpointer=MemorySaver())
+# Each thread_id has its own checkpoint in memory
+```
+
+---
+
 ## 🔄 State Management
 
 All patterns use a unified state structure:
@@ -370,14 +470,17 @@ builder.add_conditional_edges("llm_node", tools_condition)
 
 ## 📊 Execution Flow Comparison
 
-| Aspect | Basic | Tool-Calling | ReACT |
-|--------|-------|--------------|-------|
-| **Nodes** | 1 | 2 | 2 |
-| **Loop** | No | No | Yes |
-| **External Tools** | No | Yes | Yes |
-| **Reasoning Cycles** | 1 | 1 | Multiple |
-| **Complexity** | Low | Medium | High |
-| **Use Case** | Simple chat | Tool queries | Complex reasoning |
+| Aspect | Basic | Tool-Calling | ReACT | ReACT + Memory |
+|--------|-------|--------------|-------|----------------|
+| **Nodes** | 1 | 2 | 2 | 2 + Checkpoint |
+| **Loop** | No | No | Yes | Yes |
+| **External Tools** | No | Yes | Yes | Yes |
+| **Reasoning Cycles** | 1 | 1 | Multiple | Multiple |
+| **Memory/State** | None | None | None | Persistent |
+| **Thread Support** | - | - | - | Multi-thread |
+| **Streaming** | No | No | No | Yes |
+| **Complexity** | Low | Medium | High | Very High |
+| **Use Case** | Simple chat | Tool queries | Complex reasoning | Stateful assistants |
 
 ---
 
@@ -392,6 +495,60 @@ builder.add_conditional_edges("llm_node", tools_condition)
 
 ---
 
+## � Streaming & Memory Capabilities
+
+### Real-time Event Streaming
+
+The project supports multiple streaming modes for real-time monitoring and response generation:
+
+**1. Update Streaming** - Only changes at each node
+```python
+for chunk in graph.stream(input_data, config, stream_mode="updates"):
+    # Only changed nodes are included
+    # Lighter payload, better for UI updates
+    print(chunk)
+```
+
+**2. Values Streaming** - Full state at each step
+```python
+for chunk in graph.stream(input_data, config, stream_mode="values"):
+    # Complete state snapshot at each iteration
+    # Useful for state reconstruction
+    print(chunk)
+```
+
+**3. Async Event Streaming** - Full event pipeline visibility
+```python
+async for event in graph.astream_events(input_data, config, version="v2"):
+    # Real-time events from the entire execution
+    # Perfect for detailed monitoring and logging
+    print(event)
+```
+
+### Persistent Memory with Thread Isolation
+
+The `MemorySaver` checkpoint system enables conversation persistence with complete thread isolation:
+
+**Thread-based Separation:**
+```python
+# Each thread_id maintains independent state
+thread_1_config = {"configurable": {"thread_id": "alice"}}
+thread_2_config = {"configurable": {"thread_id": "bob"}}
+
+# No cross-contamination between users
+graph.invoke({"messages": "Hi, I'm Alice"}, config=thread_1_config)
+graph.invoke({"messages": "Hi, I'm Bob"}, config=thread_2_config)
+```
+
+**Features:**
+- ✅ **Conversation History** - Full message history accessible in each invocation
+- ✅ **Context Awareness** - LLM has full conversation context for better responses
+- ✅ **Multi-user Support** - Separate threads for separate users/conversations
+- ✅ **State Checkpoints** - Intermediate states saved at each step
+- ✅ **Recovery** - Resume conversations from any checkpoint
+
+---
+
 ## 🔒 Security
 
 - ✅ API keys stored in `.env` (gitignored)
@@ -399,6 +556,7 @@ builder.add_conditional_edges("llm_node", tools_condition)
 - ✅ Use environment variables for all credentials
 - ⚠️ **Never commit `.env` file**
 - 🔄 Rotate keys if accidentally exposed
+- 🔐 **Thread Isolation** - Each conversation thread is isolated (no cross-user data leaks)
 
 ---
 
@@ -444,7 +602,7 @@ except Exception as e:
 
 ## 🏗️ Project Status
 
-**Phase**: Active Development  
+**Phase**: Advanced Development & Production-Ready  
 **Last Updated**: June 2026  
 **Status**: Educational & Production-Ready Patterns  
 
@@ -452,15 +610,23 @@ except Exception as e:
 - Basic chatbot implementation
 - Tool-calling agent with conditional routing
 - ReACT agent with reasoning loops
+- **ReACT agent with persistent memory (NEW)**
+- **Multi-thread conversation support (NEW)**
+- **Streaming capabilities - updates/values/events (NEW)**
 - Multiple tool integration (Tavily + custom functions)
-- Comprehensive documentation
+- Comprehensive documentation with flow diagrams
+- Thread-based conversation isolation
+- Memory checkpointing system
 
 ### Future Enhancements 🚀
-- Human-in-the-loop approval steps
+- Persistent database storage (instead of in-memory)
+- Max iteration limits and timeout handling
+- Tool result validation and error recovery
+- Advanced error handling strategies
+- Function calling with parallel tool execution
 - Multi-agent orchestration
-- Persistent memory/context
-- Advanced error recovery
-- Production deployment examples
+- Production deployment examples (FastAPI integration)
+- Advanced memory pruning strategies
 
 ---
 

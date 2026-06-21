@@ -12,5 +12,6 @@ dependencies = [
     "langchain-tavily>=0.2.18",
     "langgraph>=1.2.5",
     "langsmith>=0.8.16",
+    "nest-asyncio>=1.6.0",
     "python-dotenv>=1.2.2",
 ]
